@@ -758,9 +758,22 @@ func (md *machineDeployment) updateUsingRollingStrategy(parentCtx context.Contex
 
 	for group, entries := range entriesByGroup {
 		entries := entries
-		startIdx += len(entries)
+
+		liveEntries := lo.Filter(entries, func(e *machineUpdateEntry, index int) bool {
+			return e.leasableMachine.Machine().State == "started";
+		})
+		nonLiveEntries := lo.Filter(entries, func(e *machineUpdateEntry, index int) bool {
+			return e.leasableMachine.Machine().State != "started";
+		})
+
+		startIdx += len(liveEntries)
 		groupsPool.Go(func(ctx context.Context) error {
-			return md.updateEntriesGroup(ctx, group, entries, sl, startIdx-len(entries))
+			return md.updateEntriesGroup(ctx, group, liveEntries, sl, startIdx-len(liveEntries))
+		})
+
+		startIdx += len(nonLiveEntries)
+		groupsPool.Go(func(ctx context.Context) error {
+			return md.updateEntriesGroup(ctx, group, nonLiveEntries, sl, startIdx-len(nonLiveEntries))
 		})
 	}
 
